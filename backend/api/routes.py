@@ -1,39 +1,73 @@
-"""API endpoint definitions.
-POST /upload       → Upload and parse the chat file
-POST /analyze      → Start the analysis process
-GET  /report/{id}  → Fetch the analysis report
-GET  /users/{id}   → Fetch group users list
-"""
-from fastapi import APIRouter, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException
+import asyncio
+from datetime import datetime
+
+from utils.file_handler import save_upload_file, update_session_status, get_session_status, get_upload_path
+from parser.chat_parser import parse_file
+from parser.anonymizer import Anonymizer
+from models.session import AnalysisSession, SessionStatus
+from analyzer.pipeline import run as run_pipeline
 
 router = APIRouter()
 
+async def run_analysis_wrapper(session_id: str):
+    """Wrapper to prepare data, run pipeline, and periodically sync session status."""
+    try:
+        update_session_status(session_id, SessionStatus.PARSING.value, 5)
+        file_path = get_upload_path(session_id)
+        
+        messages = parse_file(file_path)
+        anonymizer = Anonymizer()
+        messages = anonymizer.anonymize_messages(messages)
+        
+        # Create AnalysisSession for the pipeline
+        session = AnalysisSession(session_id=session_id, created_at=datetime.now())
+        
+        # We need to sync session state with the disk periodically for the polling endpoint
+        async def sync_session_state():
+            while session.status not in (SessionStatus.COMPLETED, SessionStatus.FAILED):
+                update_session_status(session_id, session.status.value, session.progress_pct)
+                await asyncio.sleep(0.5)
+                
+        # Start the sync task
+        sync_task = asyncio.create_task(sync_session_state())
+        
+        # Run the main pipeline from analyzer.pipeline
+        report = await run_pipeline(session, messages)
+        
+        # Stop sync task and finalize
+        sync_task.cancel()
+        update_session_status(session_id, SessionStatus.COMPLETED.value, 100, report)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        update_session_status(session_id, "failed", 0, {"error": str(e)})
+
 @router.post("/upload")
-async def upload_chat(file: UploadFile = File(...)):
-    # 1. Read file (.txt or .zip)
-    # 2. Call parser.chat_parser.parse()
-    # 3. Return normalized data
-    pass
+async def upload_file(file: UploadFile = File(...)):
+    """Accepts a WhatsApp .txt or .zip export and starts a session."""
+    if not file.filename.endswith(('.txt', '.zip')):
+        raise HTTPException(status_code=400, detail="Sadece .txt veya .zip dosyaları desteklenir")
+        
+    session_id = await save_upload_file(file)
+    return {"session_id": session_id}
 
 @router.post("/analyze/{session_id}")
-async def analyze_chat(session_id: str):
-    # 1. Load parsed data
-    # 2. Call analyzer.pipeline.run()
-    # 3. Trigger async analysis job
-    pass
+async def start_analysis(session_id: str, background_tasks: BackgroundTasks):
+    """Starts the analysis pipeline asynchronously."""
+    status = get_session_status(session_id)
+    if status.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    background_tasks.add_task(run_analysis_wrapper, session_id)
+    return {"status": "started"}
 
 @router.get("/report/{session_id}")
 async def get_report(session_id: str):
-    # Return completed analysis report
-    pass
-
-@router.get("/users/{session_id}")
-async def get_users(session_id: str):
-    # Return list of all users in the group
-    pass
-
-@router.get("/user/{session_id}/{user_id}")
-async def get_user_profile(session_id: str, user_id: str):
-    # Return single user profile + psychological analysis
-    pass
+    """Returns the current progress or final report of a session."""
+    status = get_session_status(session_id)
+    if status.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    return status
