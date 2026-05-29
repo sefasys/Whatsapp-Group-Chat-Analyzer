@@ -17,7 +17,7 @@ from models.message import Message, MessageType
 from analyzer.stats_analyzer import StatsAnalyzer
 from analyzer.nlp_analyzer import NLPAnalyzer
 from analyzer.network_analyzer import NetworkAnalyzer
-from analyzer.llm_analyzer import LLMAnalyzer
+from analyzer.llm_analyzer import get_llm_analyzer
 from analyzer.prompt_templates import (
     build_character_prompt,
     build_silent_user_prompt,
@@ -26,7 +26,7 @@ from analyzer.prompt_templates import (
 from parser.preprocessor import filter_noise, group_by_user, build_llm_chunks
 
 
-async def run(session: AnalysisSession, messages: list[Message]) -> dict:
+async def run(session: AnalysisSession, messages: list[Message], provider: str = "gemini") -> dict:
     """
     Ana pipeline. Tüm analiz adımlarını sırayla çalıştırır.
     Session nesnesi ilerleme takibi için güncellenir.
@@ -50,7 +50,7 @@ async def run(session: AnalysisSession, messages: list[Message]) -> dict:
 
     # ── 4. LLM ───────────────────────────────────────────
     session.progress_pct = 60
-    llm_result = await _run_llm(clean_messages, stats_result, nlp_result)
+    llm_result = await _run_llm(clean_messages, stats_result, nlp_result, provider)
 
     # ── 5. Rapor ─────────────────────────────────────────
     session.progress_pct = 90
@@ -161,8 +161,8 @@ async def _run_network(messages: list[Message], all_user_ids: list[str]) -> dict
 # ADIM 4 — LLM
 # ─────────────────────────────────────────────────────────
 
-async def _run_llm(messages: list[Message], stats: dict, nlp: dict) -> dict:
-    llm = LLMAnalyzer()
+async def _run_llm(messages: list[Message], stats: dict, nlp: dict, provider: str) -> dict:
+    llm = get_llm_analyzer(provider)
     user_messages = group_by_user(messages)
     user_profiles = {}
 
@@ -186,8 +186,8 @@ async def _run_llm(messages: list[Message], stats: dict, nlp: dict) -> dict:
         result["user_id"] = user_id
         user_profiles[user_id] = result
 
-        # Rate limit: kullanıcılar arası 1 saniye bekle
-        await asyncio.sleep(1)
+        # Rate limit: 15 RPM (4 saniye bekleme)
+        await asyncio.sleep(4)
 
     # Grup dinamiği analizi
     group_stats_summary = {

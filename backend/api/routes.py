@@ -10,7 +10,7 @@ from analyzer.pipeline import run as run_pipeline
 
 router = APIRouter()
 
-async def run_analysis_wrapper(session_id: str):
+async def run_analysis_wrapper(session_id: str, provider: str = "gemini"):
     """Wrapper to prepare data, run pipeline, and periodically sync session status."""
     try:
         update_session_status(session_id, SessionStatus.PARSING.value, 5)
@@ -33,7 +33,7 @@ async def run_analysis_wrapper(session_id: str):
         sync_task = asyncio.create_task(sync_session_state())
         
         # Run the main pipeline from analyzer.pipeline
-        report = await run_pipeline(session, messages)
+        report = await run_pipeline(session, messages, provider=provider)
         
         # Stop sync task and finalize
         sync_task.cancel()
@@ -54,13 +54,13 @@ async def upload_file(file: UploadFile = File(...)):
     return {"session_id": session_id}
 
 @router.post("/analyze/{session_id}")
-async def start_analysis(session_id: str, background_tasks: BackgroundTasks):
+async def start_analysis(session_id: str, background_tasks: BackgroundTasks, provider: str = "gemini"):
     """Starts the analysis pipeline asynchronously."""
     status = get_session_status(session_id)
     if status.get("status") == "not_found":
         raise HTTPException(status_code=404, detail="Session not found")
         
-    background_tasks.add_task(run_analysis_wrapper, session_id)
+    background_tasks.add_task(run_analysis_wrapper, session_id, provider)
     return {"status": "started"}
 
 @router.get("/report/{session_id}")

@@ -110,6 +110,7 @@ export interface NetworkEdge {
 }
 
 export interface GroupStats {
+  totalMessages?: number;
   dailyActivity: { date: string; count: number }[];
   hourlyHeatmap: number[][];
   topicDistribution: { topic: string; percentage: number }[];

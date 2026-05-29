@@ -1,24 +1,45 @@
-import React from 'react';
-import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { OceanScores } from '../../types';
 
-interface Props { scores: OceanScores; }
-export default function OceanRadar({ scores }: Props) {
+export default function OceanRadar({ scores }: { scores: OceanScores }) {
   const data = [
-    { label: 'Openness', value: scores.openness * 100 },
-    { label: 'Conscientiousness', value: scores.conscientiousness * 100 },
-    { label: 'Extraversion', value: scores.extraversion * 100 },
-    { label: 'Agreeableness', value: scores.agreeableness * 100 },
-    { label: 'Neuroticism', value: scores.neuroticism * 100 },
+    { trait: 'Açıklık', value: scores.openness ?? 50 },
+    { trait: 'Sorumluluk', value: scores.conscientiousness ?? 50 },
+    { trait: 'Dışadönüklük', value: scores.extraversion ?? 50 },
+    { trait: 'Uyumluluk', value: scores.agreeableness ?? 50 },
+    { trait: 'Nevrotiklik', value: scores.neuroticism ?? 50 },
   ];
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <RadarChart data={data}>
-        <PolarGrid />
-        <PolarAngleAxis dataKey="label" />
-        <Radar dataKey="value" fill="#8884d8" fillOpacity={0.5} />
-      </RadarChart>
-    </ResponsiveContainer>
+    <div className="card">
+      <div className="card-header">
+        <h3>OCEAN Kişilik Profili</h3>
+      </div>
+      <div className="card-body" style={{ height: 300 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <RadarChart data={data} cx="50%" cy="50%" outerRadius="72%">
+            <PolarGrid stroke="var(--border)" />
+            <PolarAngleAxis dataKey="trait" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
+            <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+            <Tooltip
+              contentStyle={{
+                background: '#fff',
+                border: '1px solid var(--border)',
+                borderRadius: 4,
+                fontSize: 12,
+              }}
+            />
+            <Radar
+              name="Skor"
+              dataKey="value"
+              stroke="var(--accent)"
+              fill="var(--accent)"
+              fillOpacity={0.2}
+              strokeWidth={2}
+            />
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   );
 }

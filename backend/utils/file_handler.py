@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 from typing import Dict, Any, Optional
+import datetime
 from fastapi import UploadFile
 
 # Use absolute path based on project structure
@@ -66,9 +67,14 @@ def update_session_status(session_id: str, status: str, progress: int, result: O
         except:
             pass
             
+    def json_serializer(obj):
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        raise TypeError(f"Type {type(obj)} not serializable")
+        
     tmp_path = session_path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump(data, f, ensure_ascii=False, indent=2, default=json_serializer)
     os.replace(tmp_path, session_path)
 
 def get_session_status(session_id: str) -> Dict[str, Any]:
